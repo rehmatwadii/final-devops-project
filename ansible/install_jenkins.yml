@@ -51,4 +51,3 @@
         name: jenkins
         enabled: yes
         state: started
-
