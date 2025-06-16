@@ -8,12 +8,12 @@ pipeline {
     ARM_TENANT_ID       = credentials('ARM_TENANT_ID')
   }
 
- stage('Checkout Code') {
-    steps {
+  stages {
+    stage('Checkout Code') {
+      steps {
         git branch: 'main', url: 'https://github.com/rehmatwadii/final-devops-project.git'
+      }
     }
-}
-
 
     stage('Terraform Init') {
       steps {
@@ -34,8 +34,8 @@ pipeline {
     stage('Ansible Install Web') {
       steps {
         sh '''
-        VM_PUBLIC_IP=$(terraform -chdir=terraform output -raw public_ip)
-        ansible-playbook -i "${VM_PUBLIC_IP}," --private-key ./terraform/devops_key ansible/install_web.yml
+          VM_PUBLIC_IP=$(terraform -chdir=terraform output -raw public_ip)
+          ansible-playbook -i "${VM_PUBLIC_IP}," --private-key ./terraform/devops_key ansible/install_web.yml
         '''
       }
     }
@@ -43,8 +43,8 @@ pipeline {
     stage('Verify App') {
       steps {
         sh '''
-        VM_PUBLIC_IP=$(terraform -chdir=terraform output -raw public_ip)
-        curl http://${VM_PUBLIC_IP}
+          VM_PUBLIC_IP=$(terraform -chdir=terraform output -raw public_ip)
+          curl http://${VM_PUBLIC_IP}
         '''
       }
     }
