@@ -1,0 +1,15 @@
+*.zip
+*.tfstate
+*.tfstate.backup
+*.log
+*.pem
+*.key
+*.bak
+*.retry
+*.lock
+__pycache__/
+.terraform/
+.ssh/
+devops_key
+
+.terraform/

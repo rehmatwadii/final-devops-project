@@ -1,0 +1,54 @@
+---
+- name: Install Jenkins on Ubuntu VM
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Update APT cache with timeout
+      shell: |
+        timeout 60s apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=10
+      register: apt_update
+      ignore_errors: yes
+
+    - name: Debug apt update result
+      debug:
+        var: apt_update
+
+    - name: Install Java (Jenkins dependency)
+      apt:
+        name: openjdk-11-jdk
+        state: present
+
+    - name: Add Jenkins repository GPG key
+      ansible.builtin.get_url:
+        url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+        dest: /usr/share/keyrings/jenkins-keyring.asc
+        mode: '0644'
+
+    - name: Add Jenkins repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/"
+        state: present
+        filename: jenkins
+
+    - name: Update APT cache again with timeout
+      shell: |
+        timeout 60s apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=10
+      register: apt_update_again
+      ignore_errors: yes
+
+    - name: Debug second apt update
+      debug:
+        var: apt_update_again
+
+    - name: Install Jenkins
+      apt:
+        name: jenkins
+        state: present
+
+    - name: Start and enable Jenkins service
+      systemd:
+        name: jenkins
+        enabled: yes
+        state: started
+
