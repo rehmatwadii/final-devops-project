@@ -12,3 +12,6 @@ __pycache__/
 .ssh/
 devops_key
 
+.terraform/
+*.exe
+*.jar
