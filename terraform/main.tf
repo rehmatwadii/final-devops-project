@@ -69,7 +69,8 @@ resource "azurerm_linux_virtual_machine" "main" {
 
   admin_ssh_key {
     username   = "azureuser"
-    public_key = file("C:\\Users\\HAROON TRADERS\\.ssh\\devops_key.pub")
+    public_key = file("${path.module}/devops_key.pub")
+
   }
 
   disable_password_authentication = true
