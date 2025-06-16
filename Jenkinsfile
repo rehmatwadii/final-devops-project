@@ -8,12 +8,12 @@ pipeline {
     ARM_TENANT_ID       = credentials('ARM_TENANT_ID')
   }
 
-  stages {
-    stage('Checkout Code') {
-      steps {
-        git 'https://github.com/rehmatwadii/final-devops-project.git'
-      }
+ stage('Checkout Code') {
+    steps {
+        git branch: 'main', url: 'https://github.com/rehmatwadii/final-devops-project.git'
     }
+}
+
 
     stage('Terraform Init') {
       steps {
