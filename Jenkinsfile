@@ -11,7 +11,7 @@ pipeline {
     stages {
         stage('Checkout Code') {
             steps {
-                git 'https://github.com/rehmatwadii/final-devops-project.git'
+                git branch: 'main', url: 'https://github.com/rehmatwadii/final-devops-project.git'
             }
         }
 
@@ -34,11 +34,9 @@ pipeline {
         stage('Ansible Install Web') {
             steps {
                 script {
-                    // ✅ FIXED: Correct output variable name
                     def VM_PUBLIC_IP = sh(script: 'terraform -chdir=terraform output -raw public_ip_address', returnStdout: true).trim()
                     echo "VM Public IP: ${VM_PUBLIC_IP}"
 
-                    // Run Ansible Playbook
                     sh "ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i '${VM_PUBLIC_IP},' ansible/install_web.yml"
                 }
             }
