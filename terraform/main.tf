@@ -69,7 +69,7 @@ resource "azurerm_linux_virtual_machine" "main" {
 
   admin_ssh_key {
   username   = "azureuser"
-  public_key = file("${path.root}/../.ssh/devops_key.pub")  # Updated path
+  public_key = file("C:/Users/HAROON TRADERS/final-devops-project/terraform/devops_key.pub")
 }
 
   disable_password_authentication = true
