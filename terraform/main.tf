@@ -68,10 +68,9 @@ resource "azurerm_linux_virtual_machine" "main" {
   }
 
   admin_ssh_key {
-    username   = "azureuser"
-    public_key = file("${path.module}/devops_key.pub")
-
-  }
+  username   = "azureuser"
+  public_key = file("${path.root}/../.ssh/devops_key.pub")  # Updated path
+}
 
   disable_password_authentication = true
 
