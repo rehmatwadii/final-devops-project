@@ -1,177 +1,207 @@
+# Azure DevOps Automated Deployment
 
-# 🚀 End-to-End DevOps Implementation for Azure Web Deployment
+Provision an Azure Linux VM, configure Nginx and deploy a verifiable static page through Terraform, Ansible and Jenkins.
 
-![CI/CD](https://img.shields.io/badge/CI/CD-Jenkins-blue) ![IaC](https://img.shields.io/badge/IaC-Terraform-9cf) ![Ansible](https://img.shields.io/badge/CM-Ansible-green) ![Azure](https://img.shields.io/badge/Cloud-Azure-blue)
+[![Infrastructure quality](https://github.com/rehmatwadii/final-devops-project/actions/workflows/ci.yml/badge.svg)](https://github.com/rehmatwadii/final-devops-project/actions/workflows/ci.yml)
 
-## 📘 Project Overview
+## Overview / Why This Project Exists
 
-This project demonstrates a complete DevOps pipeline using **Terraform**, **Ansible**, and **Jenkins**, automating the provisioning, configuration, and deployment of a static web application on **Azure Cloud**.
+A small end-to-end infrastructure automation example with clear boundaries: Jenkins orchestrates, Terraform provisions, Ansible configures and Nginx serves. It demonstrates a reproducible deployment workflow without pretending to be a production platform.
 
-> 🔧 The entire pipeline can be executed with a single Jenkins click.
+## Features
 
----
+- Azure resource group, network, subnet, static public IP, NIC and Ubuntu 24.04 VM.
+- Password authentication disabled; SSH restricted to an operator-supplied IPv4 CIDR.
+- Public HTTP demo endpoint and `/health` response.
+- Portable public-key input and Azure credentials supplied outside Git.
+- Azure Storage remote state with locking, separate from application resources.
+- Saved Terraform plan with Jenkins approval before applying changes.
+- Dynamic Terraform outputs, bounded SSH readiness checks, idempotent Ansible modules and HTTP verification.
 
-## 📌 Objectives
+## Architecture
 
-- Provision Azure infrastructure using Terraform
-- Configure web server using Ansible
-- Deploy a static web app (`index.html`) to the server
-- Trigger everything via Jenkins Pipeline
-- Showcase Infrastructure as Code (IaC) and Continuous Deployment
-
----
-
-## 🧰 Tech Stack
-
-| Tool       | Purpose                              |
-|------------|--------------------------------------|
-| **Terraform** | Infrastructure provisioning on Azure |
-| **Ansible**   | Web server installation & app deployment |
-| **Jenkins**   | CI/CD orchestration via pipeline      |
-| **Azure**     | Host cloud infrastructure             |
-| **GitHub**    | Version control & source storage      |
-| **Docker**    | Jenkins runs in Docker container      |
-
----
-
-## 🏗️ Project Structure
-
+```mermaid
+flowchart LR
+  Developer --> GitHub --> Jenkins
+  Jenkins --> Terraform --> Azure[Azure Ubuntu VM]
+  Terraform --> State[(Azure Storage state)]
+  Jenkins --> Ansible --> Nginx[Nginx on VM]
+  Nginx --> App[Static deployment page]
+  Jenkins --> Health[HTTP health and page verification]
 ```
+
+Jenkins runs on a separate Linux agent. The target VM hosts Nginx, not Jenkins. GitHub Actions validates source without Azure credentials; it does not deploy. HTTP is intentional for this demo; TLS is not configured.
+
+## Tech Stack
+
+Terraform 1.9+, AzureRM 4.x (locked provider version), Azure, Ubuntu Linux, Ansible, Jenkins Pipeline, SSH, Nginx and GitHub Actions.
+
+## How It Works / Infrastructure Workflow
+
+Terraform obtains authentication from ARM environment variables, creates the VM and outputs its address and username. Jenkins uses those outputs to wait for SSH, then Ansible installs Nginx, copies the configuration and sample page, starts the service and checks local health. Jenkins separately checks public health and the page title.
+
+Resource identities are retained where possible, but names and the VM image changed. Review any plan against existing infrastructure carefully: replacements may occur. Historical state must be recovered privately and migrated before managing an existing deployment; never apply blindly after deleting a local state copy.
+
+## Quick Start
+
+Use a Linux workstation or WSL with Terraform, Python 3.12, SSH and curl. Azure deployment creates billable resources and requires your own subscription; no cloud deployment was performed during this modernization.
+
+1. Create a separate Azure Storage account/container for Terraform state. Enable private access and grant the deployment identity Storage Blob Data Contributor on that container, plus appropriate resource provisioning permissions. Keep the state backend outside this project's resource group.
+2. Copy `terraform/backend.hcl.example` to ignored `terraform/backend.hcl`; fill the actual state account settings.
+3. Copy `terraform/terraform.tfvars.example` to ignored `terraform/terraform.tfvars`; replace the documentation-only CIDR with your workstation's public egress IP `/32` and select an available region/size.
+4. Generate an SSH key if needed. Use your own private key locally; pass only its public part to Terraform.
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements-dev.txt
+export ARM_CLIENT_ID="your-client-id"
+export ARM_CLIENT_SECRET="your-client-secret"
+export ARM_SUBSCRIPTION_ID="your-subscription-id"
+export ARM_TENANT_ID="your-tenant-id"
+export TF_VAR_ssh_public_key="$(cat ~/.ssh/devops_key.pub)"
+terraform -chdir=terraform init -backend-config=backend.hcl
+terraform -chdir=terraform fmt -check
+terraform -chdir=terraform validate
+terraform -chdir=terraform plan -out=deploy.tfplan
+# Review the plan before applying:
+terraform -chdir=terraform apply deploy.tfplan
+export VM_IP="$(terraform -chdir=terraform output -raw public_ip_address)"
+export VM_USER="$(terraform -chdir=terraform output -raw admin_username)"
+export SSH_KEY="$HOME/.ssh/devops_key"
+export WORKSPACE="$PWD"
+export ANSIBLE_CONFIG="$PWD/ansible/ansible.cfg"
+sh scripts/deploy.sh
+sh scripts/verify.sh
+terraform -chdir=terraform output -raw application_url
+```
+
+For interactive Azure CLI authentication, run `az login` and set ARM_SUBSCRIPTION_ID instead of supplying a service principal. Provider/resource registration permissions depend on your subscription.
+
+## Environment / Variables
+
+| Input | Purpose |
+|---|---|
+| ARM_CLIENT_ID, ARM_CLIENT_SECRET, ARM_TENANT_ID, ARM_SUBSCRIPTION_ID | Azure identity/subscription |
+| TF_VAR_ssh_public_key | OpenSSH public key text |
+| ssh_allowed_cidr | Egress IPv4 CIDR, /24 or narrower; prefer /32 |
+| project_name, location, vm_size, admin_username | Portable infrastructure settings |
+| backend.hcl | State account, container and key; Azure AD authentication |
+
+Never paste real credentials into tracked files or command transcripts.
+
+## CI/CD Pipeline
+
+Create a Jenkins Pipeline from SCM pointing to this repository's `Jenkinsfile`. Provide a Linux agent labelled `linux` with Terraform, Ansible, SSH, curl and a trusted Git checkout. Install Pipeline and Credentials Binding plugins. Configure these credentials:
+
+| Jenkins credential ID | Kind / contents |
+|---|---|
+| ARM_CLIENT_ID | Secret text |
+| ARM_CLIENT_SECRET | Secret text |
+| ARM_SUBSCRIPTION_ID | Secret text |
+| ARM_TENANT_ID | Secret text |
+| terraform-backend | Secret file matching backend.hcl.example |
+| vm-ssh-public-key | Secret file containing the public key |
+| vm-ssh | SSH username with private key matching the public key |
+
+Set SSH_ALLOWED_CIDR to the agent's egress IP `/32`. All runs for this infrastructure must use the same remote backend key. Stages: checkout → init → format/validate → saved plan → human approval → apply → output retrieval → SSH/deploy → HTTP verification. Concurrent builds of this job are disabled; remote state locking also protects Terraform writes. Do not run another deployment workflow against the same infrastructure while a plan is awaiting approval. No destroy stage exists.
+
+## Testing
+
+```bash
+terraform -chdir=terraform fmt -check
+terraform -chdir=terraform init -backend=false
+terraform -chdir=terraform validate
+ansible-playbook --syntax-check -i localhost, ansible/install_web.yml
+yamllint -c .yamllint .
+python scripts/check_project.py
+sh -n scripts/plan.sh
+sh -n scripts/deploy.sh
+sh -n scripts/verify.sh
+```
+
+Validation initialization disables the backend and does not provision resources. Deployment readiness and idempotence require an actual Azure target. See [validation](docs/VALIDATION.md) for executed checks and limitations.
+
+## Security Practices
+
+Current state files, keys, environment files and local backend settings are ignored. Historical state remains in Git history: see [security](SECURITY.md). SSH is CIDR-restricted and password authentication disabled. The demo uses `ssh-keyscan` to trust the first observed host key, then enforces that key during the run; this is trust on first use, not authenticated host identity. For stronger assurance supply a host key verified through an independent Azure console channel. State storage should have least-privilege access and backups. Jenkins logs/plans can contain infrastructure details; restrict job access. Public HTTP is a demo limitation.
+
+## Cleanup
+
+Only when intentionally retiring the deployed resources, use the same identity, variables and remote backend:
+
+```bash
+terraform -chdir=terraform plan -destroy -out=destroy.tfplan
+terraform -chdir=terraform apply destroy.tfplan
+```
+
+Review the destroy plan first. Do not remove the separate state storage until resources are destroyed and retention needs are satisfied.
+
+## Screenshots / Demo
+
+![Local demonstration page; not cloud deployment proof](docs/screenshots/local-demo.png)
+
+[Mobile view](docs/screenshots/local-mobile.png)
+
+See [capture notes](docs/SCREENSHOTS.md). A local page screenshot demonstrates its UI only, not an Azure deployment. Capture Jenkins stages and the deployed URL after a real run; redact account identifiers, IPs and credentials.
+
+## Future Improvements
+
+Add TLS/domain configuration, independently authenticated host keys and a real Azure deployment smoke test. Keep the workload small; a Kubernetes cluster is unnecessary for a static demo.
+
+## Engineering Takeaways
+
+State is sensitive operational data, not source code. Output names form an interface between Terraform and deployment automation. A plan/approval/apply flow makes infrastructure changes reviewable. Idempotent configuration and explicit health verification provide evidence beyond a successful command exit.
+
+## Author
+
+[rehmatwadii](https://github.com/rehmatwadii)
+
+[Delivery report](docs/DELIVERY.md) includes the audit, changes, validation, GitHub presentation and suggested commits.
+
+## Repository Structure
+
+The final source-file listing below excludes dependencies and local state/provider directories.
+
+```text
 final-devops-project/
-├── terraform/             # Terraform IaC code
-│   ├── main.tf
-│   └── variables.tf
-├── ansible/               # Ansible playbooks
-│   ├── install_web.yml
-│   └── inventory.ini
-├── app/                   # Static web content
-│   └── index.html
-├── Jenkinsfile            # CI/CD Pipeline definition
-└── README.md              # You're reading it!
+|-- .github/
+|   `-- workflows/
+|       `-- ci.yml
+|-- ansible/
+|   |-- files/
+|   |   `-- default.conf
+|   |-- ansible.cfg
+|   `-- install_web.yml
+|-- app/
+|   `-- index.html
+|-- docs/
+|   |-- screenshots/
+|   |   |-- local-demo.png
+|   |   `-- local-mobile.png
+|   |-- DELIVERY.md
+|   |-- SCREENSHOTS.md
+|   |-- SECURITY-AUDIT.md
+|   `-- VALIDATION.md
+|-- scripts/
+|   |-- check_project.py
+|   |-- deploy.sh
+|   |-- plan.sh
+|   `-- verify.sh
+|-- terraform/
+|   |-- .terraform.lock.hcl
+|   |-- backend.hcl.example
+|   |-- main.tf
+|   |-- outputs.tf
+|   |-- terraform.tfvars.example
+|   |-- variables.tf
+|   `-- versions.tf
+|-- .gitattributes
+|-- .gitignore
+|-- .yamllint
+|-- CONTRIBUTING.md
+|-- Jenkinsfile
+|-- README.md
+|-- SECURITY.md
+`-- requirements-dev.txt
 ```
-
----
-
-## ⚙️ Jenkins Pipeline Stages
-
-| Stage                            | Description                                     |
-|----------------------------------|-------------------------------------------------|
-| 🔄 **Checkout Code**             | Clones GitHub repo                              |
-| 🌍 **Terraform Init/Apply**      | Provisions Azure VM                             |
-| 🛠️ **Ansible Install Web**       | Installs Apache and deploys index.html          |
-| ✅ **Verify Web App**            | Curl the public IP to check deployment          |
-
----
-
-## 📥 How to Run (Manually)
-
-1. **Clone the Repo**
-   ```bash
-   git clone https://github.com/rehmatwadii/final-devops-project.git
-   cd final-devops-project
-   ```
-
-2. **Provision Azure VM using Terraform**
-   ```bash
-   cd terraform
-   terraform init
-   terraform apply -auto-approve
-   ```
-
-3. **Run Ansible Playbook**
-   ```bash
-   cd ../ansible
-   ansible-playbook install_web.yml -i <VM-IP>, -u azureuser --private-key ~/.ssh/devops_key
-   ```
-
-4. **Verify**
-   ```bash
-   curl http://<VM-IP>
-   ```
-
----
-
-## 📸 Sample Screenshots
----
-✅ 1. Terraform Setup & Verification
-![image](https://github.com/user-attachments/assets/3988dc3b-53b6-4fe2-9e71-ba1b28be4413)
-📸 Screenshot: terraform validate
-![image](https://github.com/user-attachments/assets/81833d4b-be56-4448-8baf-eea55fa2dda0)
-📸 Screenshot: terraform plan
-![image](https://github.com/user-attachments/assets/19443ec9-6799-4513-b8f1-1aad894e6542)
-📸 Screenshot: terraform apply
-![image](https://github.com/user-attachments/assets/a30efa01-0f42-4f7f-96b6-b5eca4fcfbf3)
-✅ 2. Azure Resource Verification
-📸 Screenshot: Show VM Public IP (after apply)
-![image](https://github.com/user-attachments/assets/b6874529-f109-4acf-8d15-cdf29efa4ab8)
-📸 Screenshot: Azure CLI Login Status
-![image](https://github.com/user-attachments/assets/ea278106-4355-45db-be0c-6fc6b5c6fe66)
-✅ 3. SSH into Azure VM
-📸 Screenshot: SSH Access to VM
-![image](https://github.com/user-attachments/assets/4e72d367-d592-4bdc-aa21-83d08c71ee77)
-📸 Screenshot: Check Apache is Running on VM
-![image](https://github.com/user-attachments/assets/7ae1bfe9-557b-41c2-b99d-81a9611e724a)
-✅ 4. Ansible Configuration Management
-📸 Screenshot: Run Ansible Playbook
-![image](https://github.com/user-attachments/assets/145cc085-040c-4c43-87ff-57d0c0e13f28)
-✅ 6. Jenkins Pipeline Execution
-![image](https://github.com/user-attachments/assets/3ab91491-68d1-4509-8e60-5a23e53ea5d7)
-![image](https://github.com/user-attachments/assets/f1e240f5-1bf7-458a-8e70-f6349d3b9d7a)
-![image](https://github.com/user-attachments/assets/78219f95-d5d4-4d2f-a756-fd892dd6a3da)
-![image](https://github.com/user-attachments/assets/b4243438-a62d-4e9a-9055-ea94705c6763)
-![image](https://github.com/user-attachments/assets/24fa2cd4-277d-4b4a-a1e1-2f43ae61e633)
-![image](https://github.com/user-attachments/assets/473a8e80-a12d-40db-8e6a-9c29322b4a96)
-![image](https://github.com/user-attachments/assets/9107c75b-74c1-4ccd-98e6-cd87fedf43f5)
-✅ 7. GitHub Version Control
-📸 Screenshot: Git Commit History
-![image](https://github.com/user-attachments/assets/9b96bc56-b0ed-430e-9171-7625cbd15f3b)
-📸 Screenshot: Folder Structure
-![image](https://github.com/user-attachments/assets/98d20813-b825-45b2-a609-73de20c28724)
-📸 Screenshot: Git Status
-![image](https://github.com/user-attachments/assets/65b45aca-f3df-4458-b3b4-45717a4b296c)
-![image](https://github.com/user-attachments/assets/14e8703c-a4a9-43a5-a8e3-7251d6c505d4)
-✅ 8. System & Path Diagnostics
-📸 Screenshot: Show All Project Paths
-![image](https://github.com/user-attachments/assets/4c9f5b3e-48b8-4182-a708-b775c0cda372)
-📸 Screenshot: SSH Key Details
-![image](https://github.com/user-attachments/assets/5ce3291f-b9fe-404d-8a8b-9b1c2cda2e6d)
-
-## 🧠 Lessons Learned
-
-- Proper SSH key handling and path resolution is crucial
-- Jenkins path issues often arise in Docker + WSL
-- Terraform’s `file()` requires exact path precision
-- Ansible playbooks must be run with the correct inventory and key
-
----
-
-## 🔧 Troubleshooting
-
-| Issue | Fix |
-|-------|-----|
-| SSH key not found in Jenkins | Ensure `devops_key.pub` is present in repo |
-| Ansible can't find index.html | Use `{{ playbook_dir }}/../app/index.html` |
-| Terraform can't read key | Use absolute or correctly resolved relative path |
-
----
-
-## 🚀 Future Improvements
-
-- Add remote backend for Terraform state (e.g., Azure Storage)
-- Implement monitoring (Prometheus + Grafana or Azure Monitor)
-- Add test automation for deployment verification
-- Use Ansible roles for better reusability
-
----
-
-## 🤝 Author
-
-**Muhammad Rehmatullah Wadi Wala**  
-🎓 Final Year Student – SZABIST University  
-🌐 [GitHub Profile](https://github.com/rehmatwadii)
-
----
-
-## 📝 License
-
-This project is for educational purposes only.

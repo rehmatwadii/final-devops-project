@@ -1,0 +1,22 @@
+name: Infrastructure quality
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.12.2
+      - run: terraform -chdir=terraform fmt -check
+      - run: terraform -chdir=terraform init -backend=false -input=false
+      - run: terraform -chdir=terraform validate
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-dev.txt
+      - run: ansible-playbook --syntax-check -i localhost, ansible/install_web.yml
+      - run: yamllint -c .yamllint .
+      - run: python scripts/check_project.py

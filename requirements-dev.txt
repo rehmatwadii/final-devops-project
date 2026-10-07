@@ -1,0 +1,2 @@
+ansible-core==2.19.3
+yamllint==1.37.1

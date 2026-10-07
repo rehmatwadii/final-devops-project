@@ -1,0 +1,6 @@
+project_name = "devops-demo"
+location = "eastus"
+vm_size = "Standard_B1s"
+admin_username = "azureuser"
+ssh_allowed_cidr = "203.0.113.10/32"
+# Supply TF_VAR_ssh_public_key from your own public key.

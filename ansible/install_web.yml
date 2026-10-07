@@ -1,0 +1,50 @@
+---
+- name: Configure Azure demo web server
+  hosts: all
+  become: true
+  tasks:
+    - name: Install Nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+        lock_timeout: 300
+    - name: Configure Nginx
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/files/default.conf"
+        dest: /etc/nginx/sites-available/default
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Reload Nginx
+    - name: Deploy demonstration page
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../app/index.html"
+        dest: /var/www/html/index.html
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Start Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+    - name: Apply configuration
+      ansible.builtin.meta: flush_handlers
+    - name: Verify local health
+      ansible.builtin.uri:
+        url: http://127.0.0.1/health
+        status_code: 200
+        return_content: true
+      register: health
+      failed_when: health.content | trim != 'ok'
+  handlers:
+    - name: Reload Nginx
+      ansible.builtin.command: nginx -t
+      changed_when: false
+      notify: Apply Nginx reload
+    - name: Apply Nginx reload
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded

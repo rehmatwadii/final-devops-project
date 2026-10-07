@@ -1,0 +1,5 @@
+resource_group_name = "YOUR-STATE-RESOURCE-GROUP"
+storage_account_name = "YOURSTATEACCOUNT"
+container_name = "tfstate"
+key = "devops-demo.tfstate"
+use_azuread_auth = true

@@ -1,30 +1,24 @@
-provider "azurerm" {
-  features {}
-  subscription_id                  = "c5b1a542-1dcf-40c7-b506-bd10405fde83"
-  resource_provider_registrations = "none"
-}
-
 resource "azurerm_resource_group" "rg" {
-  name     = "devops-final-rg"
-  location = "East US"
+  name     = "${var.project_name}-rg"
+  location = var.location
 }
 
 resource "azurerm_virtual_network" "vnet" {
-  name                = "devops-vnet"
+  name                = "${var.project_name}-vnet"
   address_space       = ["10.0.0.0/16"]
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 }
 
 resource "azurerm_subnet" "subnet" {
-  name                 = "devops-subnet"
+  name                 = "${var.project_name}-subnet"
   resource_group_name  = azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.0.1.0/24"]
 }
 
 resource "azurerm_public_ip" "public_ip" {
-  name                = "devops-public-ip"
+  name                = "${var.project_name}-ip"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   allocation_method   = "Static"
@@ -32,7 +26,7 @@ resource "azurerm_public_ip" "public_ip" {
 }
 
 resource "azurerm_network_interface" "nic" {
-  name                = "devops-nic"
+  name                = "${var.project_name}-nic"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 
@@ -45,11 +39,11 @@ resource "azurerm_network_interface" "nic" {
 }
 
 resource "azurerm_linux_virtual_machine" "main" {
-  name                = "devops-vm"
+  name                = "${var.project_name}-vm"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
-  size                = "Standard_B1s"
-  admin_username      = "azureuser"
+  size                = var.vm_size
+  admin_username      = var.admin_username
   network_interface_ids = [
     azurerm_network_interface.nic.id,
   ]
@@ -57,20 +51,20 @@ resource "azurerm_linux_virtual_machine" "main" {
   os_disk {
     caching              = "ReadWrite"
     storage_account_type = "Standard_LRS"
-    name                 = "myosdisk1"
+    name                 = "${var.project_name}-osdisk"
   }
 
   source_image_reference {
     publisher = "Canonical"
-    offer     = "0001-com-ubuntu-server-focal"
-    sku       = "20_04-lts"
+    offer     = "ubuntu-24_04-lts"
+    sku       = "server"
     version   = "latest"
   }
 
   admin_ssh_key {
-  username   = "azureuser"
-  public_key = file("C:/Users/HAROON TRADERS/final-devops-project/terraform/devops_key.pub")
-}
+    username   = var.admin_username
+    public_key = var.ssh_public_key
+  }
 
   disable_password_authentication = true
 
@@ -79,6 +73,35 @@ resource "azurerm_linux_virtual_machine" "main" {
   }
 }
 
-output "public_ip_address" {
-  value = azurerm_public_ip.public_ip.ip_address
+
+resource "azurerm_network_security_group" "web" {
+  name                = "${var.project_name}-nsg"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  security_rule {
+    name                       = "SSHFromOperator"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = var.ssh_allowed_cidr
+    destination_address_prefix = "*"
+  }
+  security_rule {
+    name                       = "PublicHTTP"
+    priority                   = 110
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+resource "azurerm_network_interface_security_group_association" "web" {
+  network_interface_id      = azurerm_network_interface.nic.id
+  network_security_group_id = azurerm_network_security_group.web.id
 }
